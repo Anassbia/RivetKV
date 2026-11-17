@@ -22,18 +22,9 @@ public class KeyValueStore {
         return result == null ? null : result.value();
     }
 
-    public long incr (String key){
-        StoredValue Existing = map.compute(key,(k,v)->{
-            long now = System.currentTimeMillis();
-          if( v==null || v.isExpired(now)){
-              return StoredValue.withoutExpiration("1");
-          }
-          long numericValue = parseLong(v.value());
-          long updated = Math.addExact(numericValue,1);
-          return new StoredValue(Long.toString(updated),v.expiresAt());
-        });
-        return Long.parseLong(Existing.value());
-    }
+        public long incr (String key){
+          return Long.parseLong(incrementWithState(key).value());
+        }
 
     public boolean del(String key){
         AtomicBoolean deleted = new AtomicBoolean(false);
@@ -48,16 +39,7 @@ public class KeyValueStore {
     }
 
     public long decr(String key){
-       StoredValue Existing = map.compute(key , (k,v)->{
-           long now = System.currentTimeMillis();
-           if(v== null || v.isExpired(now)){
-               return StoredValue.withoutExpiration("-1");
-           }
-           long numericValue = parseLong(v.value());
-           long updated = Math.subtractExact(numericValue,1);
-           return new StoredValue(Long.toString(updated),v.expiresAt());
-       });
-        return Long.parseLong(Existing.value());
+      return Long.parseLong(decrementWithState(key).value());
     }
 
     public boolean setnx(String key,String value){
@@ -76,23 +58,7 @@ public class KeyValueStore {
     }
 
     public boolean expire(String key,long seconds){
-        AtomicBoolean success = new AtomicBoolean(false);
-        map.computeIfPresent(key,(k,v)->{
-            long now = System.currentTimeMillis();
-            if(v.isExpired(now)){
-                success.set(false);
-                return null;
-            }
-            if(seconds <= 0){
-                success.set(true);
-                return null;
-            }
-            long durationMills = Math.multiplyExact(seconds,1000);
-            long deadline  = Math.addExact(now,durationMills) ;
-            success.set(true);
-            return new StoredValue(v.value(),deadline);
-        });
-        return success.get();
+        return expireWithDeadline(key,seconds).success();
     }
         public long ttl(String key){
             StoredValue result = map.computeIfPresent(key,(k,v)->{
@@ -113,6 +79,78 @@ public class KeyValueStore {
                 return -2;
             }
             return remainingtime/1000;
+        }
+
+        public boolean expireAt(String key, long deadLineMillis){
+            AtomicBoolean result = new AtomicBoolean(false);
+            if(deadLineMillis >= Long.MAX_VALUE){
+                throw new IllegalArgumentException("limit exceeded");
+            }
+            map.computeIfPresent(key,(k,v)->{
+                long now = System.currentTimeMillis();
+
+                if(v.isExpired(now)){
+                    return null;
+                }
+                if(deadLineMillis <=now){
+                    result.set(true);
+                    return null;
+                }
+                result.set(true);
+                return new StoredValue(v.value(),deadLineMillis);
+            });
+            return result.get();
+        }
+
+        public ExpireResult expireWithDeadline(String key, long seconds){
+           long now = System.currentTimeMillis();
+           long deadline ;
+           if(seconds<=0){
+               deadline = now ;
+           }else {
+               long millSecs = Math.multiplyExact(seconds, 1000);
+               deadline = Math.addExact(now, millSecs);
+           }
+           boolean success = expireAt(key,deadline);
+           return new ExpireResult(success, deadline);
+        }
+
+        public StoredValue incrementWithState(String key){
+            StoredValue Existing = map.compute(key,(k,v)->{
+                long now = System.currentTimeMillis();
+                if( v==null || v.isExpired(now)){
+                    return StoredValue.withoutExpiration("1");
+                }
+                long numericValue = parseLong(v.value());
+                long updated = Math.addExact(numericValue,1);
+                return new StoredValue(Long.toString(updated),v.expiresAt());
+            });
+            return Existing;
+        }
+
+        public StoredValue decrementWithState(String key){
+            StoredValue Existing = map.compute(key , (k,v)->{
+                long now = System.currentTimeMillis();
+                if(v== null || v.isExpired(now)){
+                    return StoredValue.withoutExpiration("-1");
+                }
+                long numericValue = parseLong(v.value());
+                long updated = Math.subtractExact(numericValue,1);
+                return new StoredValue(Long.toString(updated),v.expiresAt());
+            });
+            return Existing;
+        }
+
+        public void setAt(String key , String value , long deadlineMillis){
+            long now = System.currentTimeMillis();
+             if(deadlineMillis >= Long.MAX_VALUE){
+                throw new IllegalArgumentException("limit exceeded");
+            }
+            else if(deadlineMillis > now){
+                map.put(key,new StoredValue(value,deadlineMillis));
+            }else{
+                map.remove(key);
+             }
         }
 }
 

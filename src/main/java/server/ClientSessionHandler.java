@@ -1,9 +1,12 @@
 package server;
 
+import Persistence.AofWriter;
+import Persistence.persistentCommnadExecutor;
 import command.CommnadHandler;
 import protocol.Parser.CommandParser;
 import protocol.Parser.Resp2Parser;
 import protocol.Parser.TextParser;
+import protocol.response.Response;
 import protocol.serializer.Resp2Serializer;
 import protocol.serializer.ResponseSerializer;
 import protocol.serializer.TextSerializer;
@@ -17,9 +20,15 @@ import java.util.List;
 
 public class ClientSessionHandler {
     private final CommnadHandler commnadHandler;
+    private final persistentCommnadExecutor persistentCommnadExecutor;
 
     public ClientSessionHandler(CommnadHandler commnadHandler) {
         this.commnadHandler = commnadHandler;
+        this.persistentCommnadExecutor = null ;
+    }
+    public ClientSessionHandler(persistentCommnadExecutor persistentCommnadExecutor) {
+        this.persistentCommnadExecutor = persistentCommnadExecutor;
+        this.commnadHandler = null;
     }
 
     public void handle(Socket socket) throws IOException {
@@ -42,8 +51,15 @@ public class ClientSessionHandler {
         }
         List<String> message ;
         while((message = parser.readCommand())!=null ){
-            System.out.println(message);// reminder to disable when benchmarking
-            serializer.serialize(commnadHandler.handle(message));
+            Response response;
+            System.out.println(message);
+            if (persistentCommnadExecutor != null) {
+                response = persistentCommnadExecutor.execute(message);
+            } else {
+                response = commnadHandler.handle(message);
+            }
+
+            serializer.serialize(response);
         }
     }
 }

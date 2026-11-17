@@ -15,15 +15,24 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
 
-public class RedisServer {
-    private static final int port = 6379 ;
-    private final Object lifeCycleLock = new Object();
-    private volatile ServerSocket ss ;
-    private volatile boolean stopping = false;
-    private final KeyValueStore kvStore = new KeyValueStore();
-    private final ClientSessionHandler sessionHandler = new ClientSessionHandler(new CommnadHandler(kvStore));
-    private final ClientConnectionManager connectionManager = new ClientConnectionManager(sessionHandler);
+    public class RedisServer {
+        private static final int port = 6379 ;
+        private final Object lifeCycleLock = new Object();
+        private volatile ServerSocket ss ;
+        private volatile boolean stopping = false;
+        private final ClientSessionHandler sessionHandler ;
+        private final ClientConnectionManager connectionManager ;
 
+
+        public RedisServer() {
+            this(new ClientSessionHandler(
+                    new CommnadHandler(new KeyValueStore())
+            ));
+        }
+        public RedisServer(ClientSessionHandler sessionHandler) {
+            this.sessionHandler = sessionHandler;
+            this.connectionManager = new ClientConnectionManager(sessionHandler);
+        }
     //ugly function , to refactor later ,clean code not respected
     public void start() throws IOException {
 
